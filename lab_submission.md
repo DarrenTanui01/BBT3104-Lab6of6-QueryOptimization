@@ -101,7 +101,7 @@ Node: Aggregate/Nested Loop, Actual Rows: 5228, Estimated Rows: 2, Q-Error: 2614
 Node: Aggregate, Actual Rows: 1, Estimated Rows: 1, Q-Error: 1.0
 
 
-While results output as a query_results.yaml file is:
+While results on the output section as a query_results.yaml file is:
 query: |2-
 
       SELECT MIN(t.title) AS movie_title
