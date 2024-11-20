@@ -8,7 +8,7 @@ conn_params = {
     'user': 'postgres',
     'password': '5trathm0re',
     'host': 'localhost',
-    'port': '5432'
+    'port': '5433'
 }
 
 # Connect to the PostgreSQL database
@@ -17,9 +17,6 @@ cur = conn.cursor()
 
 # Set the schema
 cur.execute("SET search_path TO imdb_schema;")
-
-# Disable query optimizer options (if necessary)
-# cur.execute("SET enable_hashjoin = OFF;")
 
 def execute_query_and_calculate_qerror(query):
     # Get the EXPLAIN ANALYZE output in YAML format
@@ -72,55 +69,61 @@ def main():
     yaml = YAML()
     yaml.indent(mapping=2, sequence=4, offset=2)
 
-    # NOTE: Remember to specify the path as
-    # '../Join-Order-Benchmark-queries/JOB-light-70.sql'
-    # if you are running it from the 'q-error' directory.
-
-    # file_path = 'Join-Order-Benchmark-queries/1a.sql'
-    file_path = 'Join-Order-Benchmark-queries/JOB-light-70.sql'
-    # file_path = 'Join-Order-Benchmark-queries/JOB-light-70-pending.sql'
-    # file_path = 'Join-Order-Benchmark-queries/JOB-scale-500.sql'
-    # file_path = 'Join-Order-Benchmark-queries/JOB-scale-500-pending.sql'
-    # file_path = 'Join-Order-Benchmark-queries/JOB-synthetic-5000.sql'
-    # file_path = 'Join-Order-Benchmark-queries/JOB-synthetic-5000-pending.sql'
+    # JOB Query 2b
+    query = """
+    SELECT MIN(t.title) AS movie_title
+    FROM company_name AS cn,
+         keyword AS k,
+         movie_companies AS mc,
+         movie_keyword AS mk,
+         title AS t
+    WHERE cn.country_code ='[nl]'
+      AND k.keyword ='character-name-in-title'
+      AND cn.id = mc.company_id
+      AND mc.movie_id = t.id
+      AND t.id = mk.movie_id
+      AND mk.keyword_id = k.id
+      AND mc.movie_id = mk.movie_id;
+    """
     
-    queries = read_queries_from_file(file_path)
     results = []  # Prepare a list to store results for each query
     
-    for query in queries:
-        q_error = execute_query_and_calculate_qerror(query)
-        print("\n\n--------------------------------------------------")
-        print("\nQuery:")
-        print(query)
-        print("\nCalculation:")
-        print("Q-Error = max(Estimated Rows / Actual Rows, Actual Rows / Estimated Rows)\n")
-        print("\nInterpretation:")
-        print(
-            "* Q-error = 1 implies a perfect estimation.",
-            "\n* Q-error > 1 indicates how many times the estimate was off",
-            "compared to the actual execution.\n")
-        print("\nResults:")
-        for node, actual, estimated, error in q_error:
-            print(f"Node: {node}, Actual Rows: {actual}, Estimated Rows: {estimated}, Q-Error: {error}")
+    q_error = execute_query_and_calculate_qerror(query)
+    print("\n\n--------------------------------------------------")
+    print("\nQuery:")
+    print(query)
+    print("\nCalculation:")
+    print("Q-Error = max(Estimated Rows / Actual Rows, Actual Rows / Estimated Rows)\n")
+    print("\nInterpretation:")
+    print(
+        "* Q-error = 1 implies a perfect estimation.",
+        "\n* Q-error > 1 indicates how many times the estimate was off",
+        "compared to the actual execution.\n")
+    print("\nResults:")
+    for node, actual, estimated, error in q_error:
+        print(f"Node: {node}, Actual Rows: {actual}, Estimated Rows: {estimated}, Q-Error: {error}")
         
-        # Prepare output to be stored in a YAML file        
-        query_result = {
-            "query": scalarstring.PreservedScalarString(query),  # Use PreservedScalarString for the query
-            "calculation": "Q-Error = max(Estimated Rows / Actual Rows, Actual Rows / Estimated Rows)",
-            "interpretation": [
-                "Q-error = 1 implies a perfect estimation.",
-                "Q-error > 1 indicates how many times the estimate was off compared to the actual execution."
-            ],
-            "results": [{"node": node, "actual_rows": actual, "estimated_rows": estimated, "q_error": error} for node, actual, estimated, error in q_error]
-        }
-        results.append(query_result)
-    
+    # Prepare output to be stored in a YAML file        
+    query_result = {
+        "query": scalarstring.PreservedScalarString(query),  # Use PreservedScalarString for the query
+        "calculation": "Q-Error = max(Estimated Rows / Actual Rows, Actual Rows / Estimated Rows)",
+        "interpretation": [
+            "Q-error = 1 implies a perfect estimation.",
+            "Q-error >  1 indicates how many times the estimate was off compared to the actual execution."
+        ],
+        "results": [
+            {"node": node, "actual_rows": actual, "estimated_rows": estimated, "q_error": error}
+            for node, actual, estimated, error in q_error
+        ]
+    }
+
     # Write results to a YAML file
-    with open('q-error/q_error_results.yaml', 'w') as yaml_file:
-        yaml.dump(results, yaml_file)
-    
-    # Enable query optimizer options (if necessary)
-    # cur.execute("SET enable_hashjoin = ON;")
+    with open('query_results.yaml', 'w') as yaml_file:
+        yaml.dump(query_result, yaml_file)
+
+    # Close the database connection
+    cur.close()
+    conn.close()
 
 if __name__ == "__main__":
     main()

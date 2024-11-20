@@ -1,8 +1,6 @@
-# pip install psycopg2
-# pip install pyyaml
-
 import psycopg2
 import yaml
+from ruamel.yaml import YAML, scalarstring
 
 # Database connection parameters
 conn_params = {
@@ -20,73 +18,38 @@ cur = conn.cursor()
 # Set the schema
 cur.execute("SET search_path TO imdb_schema;")
 
-# Disable query optimizer options (if necessary)
-# cur.execute("SET enable_hashjoin = OFF;")
+def execute_query(query):
+    cur.execute(query)
+    return cur.fetchall()
 
-def execute_query_and_calculate_qerror(query):
-    # Get the EXPLAIN ANALYZE output in YAML format
-    cur.execute("EXPLAIN (BUFFERS, VERBOSE, ANALYZE, FORMAT YAML) " + query)
-    analyze_results = cur.fetchall()
-    analyze_data = yaml.safe_load(analyze_results[0][0])
+def main():
+    # JOB Query 2b
+    query = """
+    SELECT MIN(t.title) AS movie_title
+    FROM company_name AS cn,
+         keyword AS k,
+         movie_companies AS mc,
+         movie_keyword AS mk,
+         title AS t
+    WHERE cn.country_code ='[nl]'
+      AND k.keyword ='character-name-in-title'
+      AND cn.id = mc.company_id
+      AND mc.movie_id = t.id
+      AND t.id = mk.movie_id
+      AND mk.keyword_id = k.id
+      AND mc.movie_id = mk.movie_id;
+    """
+    
+    results = execute_query(query)
+    
+    # Print results
+    print("Results for JOB Query 2b:")
+    for row in results:
+        print(row)
 
-    # Get the EXPLAIN output in YAML format
-    cur.execute("EXPLAIN (FORMAT YAML) " + query)
-    explain_results = cur.fetchall()
-    explain_data = yaml.safe_load(explain_results[0][0])
+    # Close the database connection
+    cur.close()
+    conn.close()
 
-    # Process YAML data to extract actual and estimated rows and maintain node order
-    def extract_rows(data, key_actual, key_estimated):
-        q_error_results = []
-
-        def recurse_nodes(node, path=""):
-            node_type = node.get('Node Type', 'Unknown')
-            new_path = f"{path}/{node_type}" if path else node_type
-            if 'Plans' in node:
-                for subnode in node['Plans']:
-                    recurse_nodes(subnode, new_path)
-
-            actual_rows = node.get(key_actual, 0)
-            estimated_rows = node.get(key_estimated, 0)
-            if actual_rows > 0:
-                q_error = max(estimated_rows / actual_rows, actual_rows / estimated_rows)
-            else:
-                q_error = float('inf')  # Handle cases where actual rows are zero
-            q_error_results.append((new_path, actual_rows, estimated_rows, q_error))
-
-        recurse_nodes(data[0]['Plan'])
-        return q_error_results
-
-    actual_key = 'Actual Rows'
-    estimated_key = 'Plan Rows'
-    q_error = extract_rows(analyze_data, actual_key, estimated_key)
-
-    return q_error
-
-# Example usage
-# query = "SELECT title FROM title WHERE kind_id = 7;"
-query = """
-SELECT
-	t.title
-FROM
-	title t
-JOIN kind_type kt ON
-	(t.kind_id = kt.id)
-WHERE
-	kind_id = 7;
-"""
-
-q_error = execute_query_and_calculate_qerror(query)
-
-print("\nCalculation:")
-print("Q-Error = max(Estimated Rows / Actual Rows, Actual Rows / Estimated Rows)\n")
-print("\nInterpretation:")
-print(
-    "* Q-error = 1 implies a perfect estimation.",
-    "\n* Q-error > 1 indicates how many times the estimate was off",
-    "compared to the actual execution.\n")
-print("\nResults:")
-for node, actual, estimated, error in q_error:
-    print(f"Node: {node}, Actual Rows: {actual}, Estimated Rows: {estimated}, Q-Error: {error}")
-
-# Enable query optimizer options (if necessary)
-# cur.execute("SET enable_hashjoin = ON;")
+if __name__ == "__main__":
+    main()
